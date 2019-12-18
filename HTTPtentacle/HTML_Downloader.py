@@ -78,6 +78,5 @@ class HTMLDownloader(object):
 # 测试代码
 if __name__ == "__main__":
     a = HTMLDownloader.get_page_content('https://baike.baidu.com/item/%E8%8C%B6/6227')
-
-with open('../DataAnalyzing/1.htm', 'w', encoding='utf-8') as file:
-    file.write(a[0])
+    with open('../DataAnalyzing/1.htm', 'w', encoding='utf-8') as file:
+        file.write(a[0])

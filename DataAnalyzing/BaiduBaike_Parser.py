@@ -97,6 +97,8 @@ class BaiduBaikeParser(object):
         """以字典的形式获取词条的定义属性"""
         # 切出属性栏区块
         info_part = self.soup.find('div', class_='basic-info')
+        if info_part is None:
+            return None
         self.remove_ref(info_part)  # 切除参考文献角标
         self.remove_hyperlink(info_part)  # 移除超链标记
         # 分列操作
@@ -123,6 +125,7 @@ class BaiduBaikeParser(object):
     def get_item_relation_table(self, soup=None):
         """
         获取百科词条页面下方相关内容表格（ajax异步内容，需要请求服务器）
+        :param soup: 词条页面解析的Beautifulsoup对象
         :raise Exception 请求失败
         """
         if soup is None:
@@ -209,7 +212,11 @@ class BaiduBaikeParser(object):
         result = dict()
         value_list = []
         title = main_tag.tr.th.text
-        result['name'] = title
+        href = main_tag.tr.th.find('a')
+        if href is not None:
+            result['name'] = (title, href['href'])
+        else:
+            result['name'] = (title, None)
         operation_plat = main_tag.tr.td.table.tr
         while operation_plat is not None:
             if isinstance(operation_plat, bs4.NavigableString):
@@ -229,17 +236,21 @@ class BaiduBaikeParser(object):
         result['content'] = value_list
         return result
 
+    # def _
+
 
 if __name__ == "__main__":
-    with open(r'E:\[Study]\PycharmProject\NetHook\123.html', 'r', encoding="utf-8") as file:
-        content = file.read()
+    content = ""  # TODO 加入HTML文本以测试
     parser = BaiduBaikeParser()
-    parser.set_content(content)
-    print("title-------------")
-    print(parser.get_item_title())
-    print("summary-------------")
-    print(parser.get_item_summary())
-    print("share,like-------------")
-    print(parser.get_sharecount_data())
-    print("basic-info----------------")
-    print(parser.get_item_def_info())
+    parser.load_content(content)
+    # followings are proven:
+    # print("title-------------")
+    # print(parser.get_item_title())
+    # print("summary-------------")
+    # print(parser.get_item_summary())
+    # print("share,like-------------")
+    # print(parser.get_sharecount_data())
+    # print("basic-info----------------")
+    # print(parser.get_item_basic_info())
+    print("relation-table------------")
+    pprint.pprint(parser.get_item_relation_table())
