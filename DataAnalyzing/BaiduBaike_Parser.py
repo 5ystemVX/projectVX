@@ -20,7 +20,7 @@ class BaiduBaikeParser(object):
                         'Connection': 'keep-alive',
                         'Referer': 'http://www.baidu.com/'
                         }
-        self.content = None
+        self.html = None
         self.soup = None
         self.url_prefix = "https://baike.baidu.com"
         self.baidu_error_url = "https://baike.baidu.com/error.html"
@@ -38,8 +38,8 @@ class BaiduBaikeParser(object):
         :return: None
         """
         if isinstance(html_soup, str):
-            self.content = html_soup
-            self.soup = bs4.BeautifulSoup(self.content, "html.parser")
+            self.html = html_soup
+            self.soup = bs4.BeautifulSoup(self.html, "html.parser")
         elif isinstance(html_soup, bs4.BeautifulSoup) or isinstance(html_soup, bs4.Tag):
             self.soup = html_soup
         self.remove_ref(self.soup)
@@ -178,7 +178,7 @@ class BaiduBaikeParser(object):
     def get_item_relation_table(self, soup=None):
         """
         获取百科词条页面下方相关内容表格（ajax异步内容，需要请求服务器）
-        :param soup: 词条页面解析的Beautifulsoup对象
+        :param soup: 词条页面解析的BeautifulSoup对象
         :raise Exception 请求失败
         """
         if soup is None:
@@ -191,109 +191,155 @@ class BaiduBaikeParser(object):
             output = list()
             for table in table_list:
                 table_id = table['id'].split('-')[3]
-                root_url = "https://baike.baidu.com/guanxi/jsondata"  # 获取内容的地址
-                get_appendix = '?action={action}&args={args}'  # get传参模版
-                action_str = "getViewLemmaData"  # 固定参数
-                args = [0, 8, {"fentryTableId": table_id}, False]  # 在这里传入条目表的id
-
-                # 将参数内容转为url转义编码插入
-                requset_url = (root_url + get_appendix.format(action=quote(action_str), args=quote(str(args))))
-                try:
-                    # 获取表格json
-                    req = urllib.request.Request(requset_url, headers=self.headers)
-                    response = urllib.request.urlopen(req, timeout=5)
-                    if self._check_404_error(response.url):
-                        output.append(None)
-                        continue
-                    if response.getcode() != 200:
-                        raise Exception("connection error on relation table fetching")
-                except Exception as e:
-                    # 连接中断：
-                    raise e  # 目前单纯传出异常
-                # json直接取值，获得表格区的HTML和总标题
-                json_data = json.load(response)
-                html_text = regex.sub(r'(\r\n)', "", json_data['html'])
-                main_title = json_data["title"]
-                # 初始化输出缓存
-                result_single_table = dict()
-                result_single_table['name'] = (main_title, None)
-                table_contents = []
-                # 解析html
-                relation_soup = bs4.BeautifulSoup(html_text, features='html.parser')
-                r_unit_list = relation_soup.find_all(class_='relation-unit', recursive=False)
-                # h3,div,table混合格式
-                h3_name = None
-                h3_buffer = []
-                for unit in r_unit_list:
-                    if unit.name == 'h3':
-                        if h3_name is not None:
-                            table_contents.append({'name': (h3_name, None), 'content': h3_buffer})
-                        h3_name = ''
-                        for string in unit.stripped_strings:
-                            h3_name += string
-                        h3_buffer = []
-                    if unit.name == 'table':
-                        # 移交递归函数处理table
-                        item = self._parse_table_recursive(unit)
-                        if h3_name is not None:
-                            if isinstance(item, list):
-                                h3_buffer.extend(item)
-                            else:
-                                h3_buffer.append(item)
-                        else:
-                            if isinstance(item, list):
-                                table_contents.extend(item)
-                            else:
-                                table_contents.append(item)
-                    if unit.name == "div":
-                        # 提取 div
-                        div_content = self._parse_div_(unit)
-                        if h3_name is not None:
-                            h3_buffer.extend(div_content)
-                        else:
-                            table_contents.extend(div_content)
-                if h3_name is not None:
-                    table_contents.append({'name': (h3_name, None), 'content': h3_buffer})  # 输出缓存
-                result_single_table['content'] = table_contents
-                output.append(result_single_table)
-
+                output.append(self.parse_single_relation_table(table_id))
         return output
 
-    def _parse_table_recursive(self, main_tag):
-        # 递归处理嵌套的表格内容
-        result = dict()
-        value_list = []
-        if main_tag.tr.find('td', recursive=False) is not None:
-            title = main_tag.tr.th.text
-            href = main_tag.tr.th.find('a')
-            if href is not None:
-                result['name'] = (title, href['href'])
-            else:
-                result['name'] = (title, None)
-            operation_plat = main_tag.tr.td.table.tr
-            while operation_plat is not None:
-                if not isinstance(operation_plat, bs4.Tag):
-                    operation_plat = operation_plat.next_sibling
-                    continue
-                if operation_plat.td.table.get('class') is not None:
-                    # 提取基层条目
-                    td_content = self._parse_div_(operation_plat.td)
-                    value_list.extend(td_content)
+    def parse_single_relation_table(self, rt_id: int):
+        """
+        解析单个相关内容表格（ajax异步内容，需要请求服务器）
+        :param rt_id: 表格id
+        :raise Exception 请求失败
+        """
+        root_url = "https://baike.baidu.com/guanxi/jsondata"  # 获取内容的地址
+        get_appendix = '?action={action}&args={args}'  # get传参模版
+        action_str = "getViewLemmaData"  # 固定参数
+        args = [0, 8, {"fentryTableId": rt_id}, False]  # 在这里传入条目表的id
+
+        # 将参数内容转为url转义编码插入
+        requset_url = (root_url + get_appendix.format(action=quote(action_str), args=quote(str(args))))
+        try:
+            # 获取表格json
+            req = urllib.request.Request(requset_url, headers=self.headers)
+            response = urllib.request.urlopen(req, timeout=5)
+            if self._check_404_error(response.url):
+                return None
+            if response.getcode() != 200:
+                raise Exception("connection error on relation table fetching")
+        except Exception as e:
+            # 连接中断：
+            raise e  # 目前单纯传出异常
+        # json直接取值，获得表格区的HTML和总标题
+        json_data = json.load(response)
+        html_text = regex.sub(r'(\r\n)', "", json_data['html'])
+        main_title = json_data["title"]
+        # 初始化输出缓存
+        result_single_table = dict()
+        # 加入表名
+        result_single_table['#head_name#'] = main_title
+        result_single_table['#head_link#'] = None
+        # 解析Html
+        relation_soup = bs4.BeautifulSoup(html_text, features='html.parser')
+        r_unit_list = relation_soup.find_all(class_='relation-unit', recursive=False)
+        # h3,div,table混合格式
+        h3_name = None
+        h3_buffer = {}
+        for unit in r_unit_list:  # 切分为最大单个元素，分别处理
+            if unit.name == 'h3':  # 以h3为分界，按顺序打包
+                if h3_name not in (None, ''):
+                    result_single_table[h3_name] = h3_buffer
+                h3_name = ''
+                for string in unit.stripped_strings:
+                    h3_name += string
+                h3_buffer.clear()
+            if unit.name == 'table':
+                # 移交递归函数处理table
+                item = self._parse_table_recursive(unit)
+                if h3_name is not None:
+                    if item.get('#head_name#') is None:
+                        h3_buffer = dict(h3_buffer, **item)
+                    else:
+                        h3_buffer[item.get('#head_name#')] = item
                 else:
-                    # 解析内部表
-                    value_list.append(self._parse_table_recursive(operation_plat.td.table))
-                operation_plat = operation_plat.next_sibling
-            result['content'] = value_list
+                    if item.get('#head_name#') is None:
+                        result_single_table = dict(result_single_table, **item)
+                    else:
+                        result_single_table[item.get('#head_name#')] = item
+            if unit.name == "div":
+                # 提取 div
+                div_content = self._parse_div_(unit)
+                if h3_name is not None:
+                    h3_buffer = dict(h3_buffer, **div_content)
+                else:
+                    result_single_table = dict(result_single_table, **div_content)
+        if h3_name is not None:  # 输出缓存
+            h3_buffer['#head_name#'] = None
+            result_single_table[h3_name] = h3_buffer  # 输出缓存
+        return result_single_table
+
+    # def _parse_table_recursive(self, main_tag):
+    #     # 递归处理嵌套的表格内容
+    #     result = dict()
+    #     value_list = []
+    #     if main_tag.tr.find('td', recursive=False) is not None:
+    #         if main_tag.tr.find('th',recursive=False) is None:
+    #             return
+    #         else:
+    #             title = main_tag.tr.th.text
+    #             href = main_tag.tr.th.find('a')
+    #             if href is not None:
+    #                 result['#head_name#'] = (title, href['href'])
+    #             else:
+    #                 result['#head_name#'] = (title, None)
+    #             operation_plat = main_tag.tr.td.table.tr
+    #             while operation_plat is not None:
+    #                 if not isinstance(operation_plat, bs4.Tag):
+    #                     operation_plat = operation_plat.next_sibling
+    #                     continue
+    #                 if operation_plat.td.table.get('class') is not None:
+    #                     # 提取基层条目
+    #                     td_content = self._parse_div_(operation_plat.td)
+    #                     value_list.extend(td_content)
+    #                 else:
+    #                     # 解析内部表
+    #                     value_list.append(self._parse_table_recursive(operation_plat.td.table))
+    #                 operation_plat = operation_plat.next_sibling
+    #             result['content'] = value_list
+    #     else:
+    #         td_content = self._parse_div_(main_tag)
+    #         value_list.extend(td_content)
+    #         result = value_list
+    #     return result
+
+    def _parse_table_recursive(self, table_tag):
+        """
+        递归处理表格tag
+        :param table_tag:
+        :return:
+        """
+        if table_tag.tr.find('td', recursive=False) is None:
+            # 表格由th存储信息
+            return self._parse_div_(table_tag)
         else:
-            td_content = self._parse_div_(main_tag)
-            value_list.extend(td_content)
-            result = value_list
-        return result
+            if table_tag.get('class') is not None and table_tag.get('class')[0] == 'tb-entries':
+                # 叶table节点，直接提取信息
+                return self._parse_div_(table_tag)
+            else:
+                content = {}
+                # 中间节点,整理下方传来的信息
+                # 寻找下一级table标签
+                for table_row in table_tag.find_all('tr', recursive=False):
+                    child_table = table_row.td.table
+                    temp = self._parse_table_recursive(child_table)  # @temp: 下一级的内容
+                    if temp.get('#head_name#') in (None, ''):  # 下一级是结构中继节点，不计入内容层级
+                        # 拆包，把内容追加在该层内容里
+                        content = dict(content, **temp)
+                    else:
+                        # 提取下层词典的表头名作为key，存成一项
+                        content[temp.get('#head_name#')] = temp
+                if table_tag.tr.find('th', recursive=False) is not None:  # 自己不是结构中继节点
+                    title = table_tag.tr.th.text  # 提取标题
+                    content['#head_name#'] = title
+                    href = table_tag.tr.th.find('a', href=True)  # 查找标题链接
+                    if href is not None:
+                        content['#head_link#'] = href['href']  # 存储链接
+                    else:
+                        content['#head_link#'] = None
+                return content
 
     def _parse_div_(self, div_tag):
         # 处理一般div内容
         # 直接提取
-        div_content = []
+        div_content = dict()
         rows = div_tag.find_all('span', class_="entry-item")
         if rows is not None:
             for row in rows:
@@ -301,14 +347,14 @@ class BaiduBaikeParser(object):
                 value = ""
                 for string in row.stripped_strings:
                     value += string
-                div_content.append((value, href))
+                div_content[value] = href
         return div_content
 
 
 if __name__ == "__main__":
-    content = ""  # TODO 加入HTML文本以测试
+    text111 = ""  # TODO 加入HTML文本以测试
     parser = BaiduBaikeParser()
-    parser.load_content(content)
+    parser.load_content(text111)
     # followings are proven:
     # print("title-------------")
     # print(parser.get_item_title())
