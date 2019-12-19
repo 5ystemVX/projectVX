@@ -1,6 +1,6 @@
 import json
 import pprint
-import urllib
+import urllib.request
 
 import bs4
 import re as regex
@@ -31,10 +31,17 @@ class BaiduBaikeParser(object):
         else:
             return True
 
-    def load_content(self, html_text: str):
-        """装填百度百科页面的内容，以供分析"""
-        self.content = html_text
-        self.soup = bs4.BeautifulSoup(self.content, "html.parser")
+    def load_content(self, html_soup) -> None:
+        """
+        装填百度百科页面的内容，以供分析
+        :param html_soup: html字符串，或者soup对象
+        :return: None
+        """
+        if isinstance(html_soup, str):
+            self.content = html_soup
+            self.soup = bs4.BeautifulSoup(self.content, "html.parser")
+        elif isinstance(html_soup, bs4.BeautifulSoup) or isinstance(html_soup, bs4.Tag):
+            self.soup = html_soup
         self.remove_ref(self.soup)
 
     @staticmethod
@@ -56,7 +63,10 @@ class BaiduBaikeParser(object):
                 tag.unwrap()
 
     def get_item_title(self) -> str:
-        """ 获取词条标题和副标题的拼接（如果有）"""
+        """
+         获取词条标题和副标题的拼接（如果有)
+        :return: str
+        """
         # 切出标题部分
         title_part = self.soup.find(attrs={"class": "lemmaWgt-lemmaTitle-title"})
         # 截取标题
@@ -66,10 +76,15 @@ class BaiduBaikeParser(object):
             title += title_part.find(name='h2').string
         return title
 
-    def get_item_summary(self) -> str:
-        """ 获取词条的概述区块纯文本"""
+    def get_item_summary(self) -> str or None:
+        """
+        获取词条的概述区块纯文本
+        :return:
+        """
         # 切割主页概述区块
         summary_part = self.soup.find(attrs={"class": "lemma-summary"})
+        if summary_part is None:
+            return None
         # 拼接完整概述
         summary = ""
         for child in summary_part.descendants:  # 递归查找所有子元素
@@ -78,35 +93,11 @@ class BaiduBaikeParser(object):
                 summary += str(child).strip()
         return summary
 
-    def get_sharecount_data(self) -> dict:
+    def get_item_basic_info(self) -> dict or None:
         """
-        获取转发和点赞数（ajax异步内容，需要请求服务器）
-
-        返回  dict ｛share,like} 格式值
-             None 如果404
-        :raises e 连接失败
+        以字典的形式获取词条的定义属性
+        :return: dict
         """
-        # 获取 Lemma id
-        lemma_id_div = self.soup.find('div', class_='lemmaWgt-promotion-rightPreciseAd')
-        lemma_id = regex.findall('data-lemmaid="(.*)" ', str(lemma_id_div))
-        # 拼接查询URL
-        state_url = 'https://baike.baidu.com/api/wikiui/sharecounter?lemmaId={}'.format(lemma_id[0])
-        try:
-            # 请求服务器返回值
-            response = requests.get(state_url, headers=self.headers, timeout=5)
-            response.raise_for_status()
-            if self._check_404_error(response.url):
-                return None
-            # json直接取值
-            json_data = json.loads(response.text)
-        except Exception as e:
-            raise e
-        like_count = json_data['likeCount'] if json_data['likeCount'] is not None else 0
-        share_count = json_data['shareCount'] if json_data['shareCount'] is not None else 0
-        return {"share": share_count, "like": like_count}
-
-    def get_item_basic_info(self) -> dict:
-        """以字典的形式获取词条的定义属性"""
         # 切出属性栏区块
         info_part = self.soup.find('div', class_='basic-info')
         if info_part is None:
@@ -133,6 +124,56 @@ class BaiduBaikeParser(object):
         keymap[key] = regex.sub(r'[\xa0 \n]', ' ', value.strip())  # 输出缓存
         keymap.pop('')  # 剔除初始化项
         return keymap
+
+    def get_item_reference(self) -> list or None:
+        """
+        获取词条参考资料区块
+        :return: list[tuple(参考资料文字内容,链接),None 如果没有参考资料区域
+        """
+        output = []
+        # 切出参考资料区块
+        ref_block = self.soup.find('dl', class_="lemma-reference")
+        if ref_block is None:
+            return None
+        # 删除序号
+        for item in ref_block.find_all('span', class_="index"):
+            item.decompose()
+        for ref_row in ref_block.find_all("li", class_="reference-item"):
+            text = ""
+            for string in ref_row.stripped_strings:
+                text += string
+            if ref_row.find('a', class_="text") is not None:
+                output.append((text, ref_row.find('a', class_="text")['href']))
+            else:
+                output.append((text, None))
+        return output
+
+    def get_sharecount_data(self) -> dict or None:
+        """
+        获取转发和点赞数（ajax异步内容，需要请求服务器）
+
+        返回  dict ｛share,like} 格式值
+             None 如果404
+        :raises e 连接失败
+        """
+        # 获取 Lemma id
+        lemma_id_div = self.soup.find('div', class_='lemmaWgt-promotion-rightPreciseAd')
+        lemma_id = regex.findall('data-lemmaid="(.*)" ', str(lemma_id_div))
+        # 拼接查询URL
+        state_url = 'https://baike.baidu.com/api/wikiui/sharecounter?lemmaId={}'.format(lemma_id[0])
+        try:
+            # 请求服务器返回值
+            response = requests.get(state_url, headers=self.headers, timeout=5)
+            response.raise_for_status()
+            if self._check_404_error(response.url):
+                return None
+            # json直接取值
+            json_data = json.loads(response.text)
+        except Exception as e:
+            raise e
+        like_count = json_data['likeCount'] if json_data['likeCount'] is not None else 0
+        share_count = json_data['shareCount'] if json_data['shareCount'] is not None else 0
+        return {"share": share_count, "like": like_count}
 
     def get_item_relation_table(self, soup=None):
         """
@@ -191,13 +232,20 @@ class BaiduBaikeParser(object):
                         for string in unit.stripped_strings:
                             h3_name += string
                         h3_buffer = []
-                    elif unit.name == 'table':
+                    if unit.name == 'table':
                         # 移交递归函数处理table
+                        item = self._parse_table_recursive(unit)
                         if h3_name is not None:
-                            h3_buffer.append(self._parse_table_recursive(unit))
+                            if isinstance(item, list):
+                                h3_buffer.extend(item)
+                            else:
+                                h3_buffer.append(item)
                         else:
-                            table_contents.append(self._parse_table_recursive(unit))
-                    elif unit.name == "div":
+                            if isinstance(item, list):
+                                table_contents.extend(item)
+                            else:
+                                table_contents.append(item)
+                    if unit.name == "div":
                         # 提取 div
                         div_content = self._parse_div_(unit)
                         if h3_name is not None:
@@ -215,26 +263,31 @@ class BaiduBaikeParser(object):
         # 递归处理嵌套的表格内容
         result = dict()
         value_list = []
-        title = main_tag.tr.th.text
-        href = main_tag.tr.th.find('a')
-        if href is not None:
-            result['name'] = (title, href['href'])
-        else:
-            result['name'] = (title, None)
-        operation_plat = main_tag.tr.td.table.tr
-        while operation_plat is not None:
-            if not isinstance(operation_plat, bs4.Tag):
-                operation_plat = operation_plat.next_sibling
-                continue
-            if operation_plat.td.table.get('class') is not None:
-                # 提取基层条目
-                td_content = self._parse_div_(operation_plat.td)
-                value_list.extend(td_content)
+        if main_tag.tr.find('td', recursive=False) is not None:
+            title = main_tag.tr.th.text
+            href = main_tag.tr.th.find('a')
+            if href is not None:
+                result['name'] = (title, href['href'])
             else:
-                # 解析内部表
-                value_list.append(self._parse_table_recursive(operation_plat.td.table))
-            operation_plat = operation_plat.next_sibling
-        result['content'] = value_list
+                result['name'] = (title, None)
+            operation_plat = main_tag.tr.td.table.tr
+            while operation_plat is not None:
+                if not isinstance(operation_plat, bs4.Tag):
+                    operation_plat = operation_plat.next_sibling
+                    continue
+                if operation_plat.td.table.get('class') is not None:
+                    # 提取基层条目
+                    td_content = self._parse_div_(operation_plat.td)
+                    value_list.extend(td_content)
+                else:
+                    # 解析内部表
+                    value_list.append(self._parse_table_recursive(operation_plat.td.table))
+                operation_plat = operation_plat.next_sibling
+            result['content'] = value_list
+        else:
+            td_content = self._parse_div_(main_tag)
+            value_list.extend(td_content)
+            result = value_list
         return result
 
     def _parse_div_(self, div_tag):
