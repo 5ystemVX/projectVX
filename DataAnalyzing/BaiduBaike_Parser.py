@@ -316,10 +316,14 @@ class BaiduBaikeParser(object):
             else:
                 content = {}
                 # 中间节点,整理下方传来的信息
-                # 寻找下一级table标签
+                # 寻找下一级标签(table或div)
                 for table_row in table_tag.find_all('tr', recursive=False):
-                    child_table = table_row.td.table
-                    temp = self._parse_table_recursive(child_table)  # @temp: 下一级的内容
+                    child_tag = table_row.td.contents[0]
+                    if child_tag.name == "table":
+                        temp = self._parse_table_recursive(child_tag)
+                    else:
+                        temp = self._parse_div_(child_tag)
+                    # @temp: 下一层的内容
                     if temp.get('#head_name#') in (None, ''):  # 下一级是结构中继节点，不计入内容层级
                         # 拆包，把内容追加在该层内容里
                         content = dict(content, **temp)
