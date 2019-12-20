@@ -12,7 +12,7 @@ import json
 
 
 class MyTestCase(unittest.TestCase):
-    def test_something(self):
+    def test_all(self):
 
         header = {'Accept': '*/*',
                   'Accept-Language': 'en-US,en;q=0.8',
@@ -25,24 +25,27 @@ class MyTestCase(unittest.TestCase):
 
         content = HTMLDownloader.get_page_content('https://baike.baidu.com/item/%E9%92%9B/499070', header)
         parser = BaiduBaikeParser()
-        parser.load_content(content[0])
+        parser.load_content(content['html'])
         # followings are proven:
-        # print("title-------------")
-        # print(parser.get_item_title())
-        # print("summary-------------")
-        # print(parser.get_item_summary())
-        # print("share,like-------------")
-        # print(parser.get_sharecount_data())
-        # print("basic-info----------------")
-        # print(parser.get_item_basic_info())
-        # print("relation-table------------")
-        # tables = parser.get_item_relation_table()
-        # pprint.pprint(tables)
-        # print('reference------------')
-        # pprint.pprint(parser.get_item_reference())
+        print("title------------------------")
+        pprint.pprint(parser.get_item_title())
+        print("summary----------------------")
+        pprint.pprint(parser.get_item_summary())
+        print("share,like-------------------")
+        pprint.pprint(parser.get_share_like_count())
+        print("preview-------------------")
+        pprint.pprint(parser.get_preview_count(content))
+        print("tags-------------------")
+        pprint.pprint(parser.get_item_tag())
+        print("basic-info-------------------")
+        pprint.pprint(parser.get_item_basic_info())
+        print("reference--------------------")
+        pprint.pprint(parser.get_item_reference())
+        self.assertEqual(True, True)
 
     def test_relation_table_parsing(self):
-        r_table_ids = [3985]
+        self.assertEqual(True, True)
+        r_table_ids = [3984, 38410]
         for i in range(10):
             r_table_ids.append(random.randint(1000, 4000))
         for r_id in r_table_ids:
@@ -68,7 +71,7 @@ class MyTestCase(unittest.TestCase):
              '#head_name#': '中国六大茶类',
              '乌龙茶': {'#head_link#': 'http://baike.baidu.com/subview/6154/5060874.htm',
                        '#head_name#': '乌龙茶',
-                       .....................
+                       ...etc....................
             '''
 
 

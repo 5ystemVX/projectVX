@@ -4,7 +4,7 @@ import re
 
 class HTMLDownloader(object):
     @staticmethod
-    def get_page_content(url: str, header: dict = None, retry_time: int = 3) -> tuple:
+    def get_page_content(url: str, header: dict = None, retry_time: int = 3):
         """
         获取HTML页面全部文字内容，去除js和css等装饰信息。
             :param url:网页URL，包括http协议头
@@ -13,7 +13,7 @@ class HTMLDownloader(object):
             :return  网页所有信息,响应的url
             :except  UserWarning 连接失败抛出异常
         """
-
+        result = {}
         (html, response_url) = HTMLDownloader.get_raw_page(url, header, retry_time)
         # 削去多余的空白符号，保留单个桩
         html = re.sub(r'[\n\r\t]', '\n', html)
@@ -21,10 +21,23 @@ class HTMLDownloader(object):
         html = re.sub(r' +', " ", html)
         # 削去 所有的 style 区域，精简结果
         html = re.sub(r'<style.*?>.*?/style>', "###style texts###", html, flags=re.S)
+        # 收集页面id信息，解析可能用得到
+        id_dict = {'newLemmaIdEnc': re.compile(r'\bnewLemmaIdEnc:"(.*?)"'),
+                   'LemmaId': re.compile(r'\blemmaId:"(.*?)"'),
+                   'newLemmaId': re.compile(r'\bnewLemmaId:"(.*?)"'),
+                   'subLemmaId': re.compile(r'\bsubLemmaId:"(.*?)"')}
+
+        for key, pattern in id_dict.items():
+            find = re.findall(pattern, html)
+            result[key] = find[0] if len(find) > 0 else None
+
         # 削去所有 js 内容（可能有问题）
         html = re.sub(r'<script.*?>.*?/script>', "###java script###", html, flags=re.S)
         # 返回页面内容和真实响应url
-        return html, re.sub(r'\?.*', '', response_url)  # 去除get参数部分
+        result['html'] = html
+        result['response_url'] = re.sub(r'\?.*', '', response_url)
+
+        return result
 
     @staticmethod
     def get_raw_page(url: str, header: dict = None, retry_time: int = 3) -> tuple:
@@ -73,10 +86,3 @@ class HTMLDownloader(object):
                 return result, response.url
                 # 连接失败，抛异常
         raise UserWarning("connection failed {} times.".format(retry_time))
-
-
-# 测试代码
-if __name__ == "__main__":
-    a = HTMLDownloader.get_page_content('https://baike.baidu.com/item/%E8%8C%B6/6227')
-    with open('../DataAnalyzing/1.htm', 'w', encoding='utf-8') as file:
-        file.write(a[0])
