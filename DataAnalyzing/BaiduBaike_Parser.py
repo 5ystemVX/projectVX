@@ -139,41 +139,79 @@ class BaiduBaikeParser(object):
         for item in ref_block.find_all('span', class_="index"):
             item.decompose()
         for ref_row in ref_block.find_all("li", class_="reference-item"):
-            text = ""
-            for string in ref_row.stripped_strings:
-                text += string
+            text = "".join(ref_row.stripped_strings)
             if ref_row.find('a', class_="text") is not None:
                 output.append((text, ref_row.find('a', class_="text")['href']))
             else:
                 output.append((text, None))
         return output
 
-    def get_sharecount_data(self) -> dict or None:
+    def get_share_like_count(self) -> dict or None:
         """
-        获取转发和点赞数（ajax异步内容，需要请求服务器）
+        获取转发、点赞数（ajax异步内容，需要请求2次服务器）
 
-        返回  dict ｛share,like} 格式值
+        返回  dict ｛share,like,review} 格式值
              None 如果404
-        :raises e 连接失败
+        :raises Exception 连接失败
         """
         # 获取 Lemma id
         lemma_id_div = self.soup.find('div', class_='lemmaWgt-promotion-rightPreciseAd')
         lemma_id = regex.findall('data-lemmaid="(.*)" ', str(lemma_id_div))
+
         # 拼接查询URL
-        state_url = 'https://baike.baidu.com/api/wikiui/sharecounter?lemmaId={}'.format(lemma_id[0])
+        share_like_url = "https://baike.baidu.com/api/wikiui/sharecounter?lemmaId={}".format(lemma_id[0])
         try:
             # 请求服务器返回值
-            response = requests.get(state_url, headers=self.headers, timeout=5)
-            response.raise_for_status()
+            req = urllib.request.Request(share_like_url, headers=self.headers)
+            response = urllib.request.urlopen(req, timeout=5)
             if self.__check_404_error(response.url):
                 return None
             # json直接取值
-            json_data = json.loads(response.text)
+            json_data = json.load(response)
         except Exception as e:
             raise e
-        like_count = json_data['likeCount'] if json_data['likeCount'] is not None else 0
-        share_count = json_data['shareCount'] if json_data['shareCount'] is not None else 0
+        like_count = json_data['likeCount'] if json_data.get('likeCount') is not None else 0
+        share_count = json_data['shareCount'] if json_data.get('shareCount') is not None else 0
+
         return {"share": share_count, "like": like_count}
+
+    def get_preview_count(self, id_enc: str):
+        """
+        获取浏览数（ajax异步内容，需要请求2次服务器）
+        :param id_enc: 页面id的hash（未推出hash方式，需要直接提取的字符串）
+        :raises Exception: 连接失败
+        :return int or None:
+        """
+        if isinstance(id_enc, dict):
+            id_enc = id_enc.get('newLemmaIdEnc')
+        if id_enc is None:
+            return None
+
+        review_url = "http://baike.baidu.com/api/lemmapv?id={}&r={}".format(id_enc, str(int(time.time())))
+        try:
+            # 请求服务器返回值
+            req = urllib.request.Request(review_url, headers=self.headers)
+            response = urllib.request.urlopen(req, timeout=5)
+            if self.__check_404_error(response.url):
+                return None
+            # json直接取值
+            json_data = json.load(response)
+        except Exception as e:
+            raise e
+        review_count = json_data['pv'] if json_data.get('pv') is not None else 0
+        return review_count
+
+    def get_item_tag(self):
+        # 词条标签：不一定每个词条都有，需要筛选有的再查
+        tag_node = self.soup.find('div', id="open-tag")
+        if tag_node is None:
+            return None
+        else:
+            result_list = []
+            tags = tag_node.find_all('span')
+            for tag in tags:
+                result_list.append(''.join(tag.stripped_strings))
+        return result_list
 
     def get_item_relation_table(self, soup=None):
         """
@@ -237,9 +275,7 @@ class BaiduBaikeParser(object):
             if unit.name == 'h3':  # 以h3为分界，按顺序打包
                 if h3_name not in (None, ''):
                     result_single_table[h3_name] = h3_buffer
-                h3_name = ''
-                for string in unit.stripped_strings:
-                    h3_name += string
+                h3_name = ''.join(unit.stripped_strings)
                 h3_buffer.clear()
             if unit.name == 'table':
                 # 移交递归函数处理table
@@ -265,40 +301,6 @@ class BaiduBaikeParser(object):
             h3_buffer['#head_name#'] = None
             result_single_table[h3_name] = h3_buffer  # 输出缓存
         return result_single_table
-
-    # def _parse_table_recursive(self, main_tag):
-    #     # 递归处理嵌套的表格内容
-    #     result = dict()
-    #     value_list = []
-    #     if main_tag.tr.find('td', recursive=False) is not None:
-    #         if main_tag.tr.find('th',recursive=False) is None:
-    #             return
-    #         else:
-    #             title = main_tag.tr.th.text
-    #             href = main_tag.tr.th.find('a')
-    #             if href is not None:
-    #                 result['#head_name#'] = (title, href['href'])
-    #             else:
-    #                 result['#head_name#'] = (title, None)
-    #             operation_plat = main_tag.tr.td.table.tr
-    #             while operation_plat is not None:
-    #                 if not isinstance(operation_plat, bs4.Tag):
-    #                     operation_plat = operation_plat.next_sibling
-    #                     continue
-    #                 if operation_plat.td.table.get('class') is not None:
-    #                     # 提取基层条目
-    #                     td_content = self._parse_div_(operation_plat.td)
-    #                     value_list.extend(td_content)
-    #                 else:
-    #                     # 解析内部表
-    #                     value_list.append(self._parse_table_recursive(operation_plat.td.table))
-    #                 operation_plat = operation_plat.next_sibling
-    #             result['content'] = value_list
-    #     else:
-    #         td_content = self._parse_div_(main_tag)
-    #         value_list.extend(td_content)
-    #         result = value_list
-    #     return result
 
     def __parse_table_recursive(self, table_tag):
         """
@@ -348,25 +350,6 @@ class BaiduBaikeParser(object):
         if rows is not None:
             for row in rows:
                 href = row.a['href'] if row.find('a') is not None else None
-                value = ""
-                for string in row.stripped_strings:
-                    value += string
+                value = "".join(row.stripped_strings)
                 div_content[value] = href
         return div_content
-
-
-if __name__ == "__main__":
-    text111 = ""  # TODO 加入HTML文本以测试
-    parser = BaiduBaikeParser()
-    parser.load_content(text111)
-    # followings are proven:
-    # print("title-------------")
-    # print(parser.get_item_title())
-    # print("summary-------------")
-    # print(parser.get_item_summary())
-    # print("share,like-------------")
-    # print(parser.get_sharecount_data())
-    # print("basic-info----------------")
-    # print(parser.get_item_basic_info())
-    print("relation-table------------")
-    pprint.pprint(parser.get_item_relation_table())
