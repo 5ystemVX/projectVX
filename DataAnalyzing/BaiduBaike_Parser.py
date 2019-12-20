@@ -25,7 +25,7 @@ class BaiduBaikeParser(object):
         self.url_prefix = "https://baike.baidu.com"
         self.baidu_error_url = "https://baike.baidu.com/error.html"
 
-    def _check_404_error(self, url):
+    def __check_404_error(self, url):
         if regex.match(self.baidu_error_url, url) is None:
             return False
         else:
@@ -165,7 +165,7 @@ class BaiduBaikeParser(object):
             # 请求服务器返回值
             response = requests.get(state_url, headers=self.headers, timeout=5)
             response.raise_for_status()
-            if self._check_404_error(response.url):
+            if self.__check_404_error(response.url):
                 return None
             # json直接取值
             json_data = json.loads(response.text)
@@ -211,7 +211,7 @@ class BaiduBaikeParser(object):
             # 获取表格json
             req = urllib.request.Request(requset_url, headers=self.headers)
             response = urllib.request.urlopen(req, timeout=5)
-            if self._check_404_error(response.url):
+            if self.__check_404_error(response.url):
                 return None
             if response.getcode() != 200:
                 raise Exception("connection error on relation table fetching")
@@ -243,7 +243,7 @@ class BaiduBaikeParser(object):
                 h3_buffer.clear()
             if unit.name == 'table':
                 # 移交递归函数处理table
-                item = self._parse_table_recursive(unit)
+                item = self.__parse_table_recursive(unit)
                 if h3_name is not None:
                     if item.get('#head_name#') is None:
                         h3_buffer = dict(h3_buffer, **item)
@@ -256,7 +256,7 @@ class BaiduBaikeParser(object):
                         result_single_table[item.get('#head_name#')] = item
             if unit.name == "div":
                 # 提取 div
-                div_content = self._parse_div_(unit)
+                div_content = self.__parse_div_(unit)
                 if h3_name is not None:
                     h3_buffer = dict(h3_buffer, **div_content)
                 else:
@@ -300,7 +300,7 @@ class BaiduBaikeParser(object):
     #         result = value_list
     #     return result
 
-    def _parse_table_recursive(self, table_tag):
+    def __parse_table_recursive(self, table_tag):
         """
         递归处理表格tag
         :param table_tag:
@@ -308,11 +308,11 @@ class BaiduBaikeParser(object):
         """
         if table_tag.tr.find('td', recursive=False) is None:
             # 表格由th存储信息
-            return self._parse_div_(table_tag)
+            return self.__parse_div_(table_tag)
         else:
             if table_tag.get('class') is not None and table_tag.get('class')[0] == 'tb-entries':
                 # 叶table节点，直接提取信息
-                return self._parse_div_(table_tag)
+                return self.__parse_div_(table_tag)
             else:
                 content = {}
                 # 中间节点,整理下方传来的信息
@@ -320,9 +320,9 @@ class BaiduBaikeParser(object):
                 for table_row in table_tag.find_all('tr', recursive=False):
                     child_tag = table_row.td.contents[0]
                     if child_tag.name == "table":
-                        temp = self._parse_table_recursive(child_tag)
+                        temp = self.__parse_table_recursive(child_tag)
                     else:
-                        temp = self._parse_div_(child_tag)
+                        temp = self.__parse_div_(child_tag)
                     # @temp: 下一层的内容
                     if temp.get('#head_name#') in (None, ''):  # 下一级是结构中继节点，不计入内容层级
                         # 拆包，把内容追加在该层内容里
@@ -340,7 +340,7 @@ class BaiduBaikeParser(object):
                         content['#head_link#'] = None
                 return content
 
-    def _parse_div_(self, div_tag):
+    def __parse_div_(self, div_tag):
         # 处理一般div内容
         # 直接提取
         div_content = dict()
