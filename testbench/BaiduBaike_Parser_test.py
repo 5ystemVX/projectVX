@@ -27,6 +27,8 @@ class MyTestCase(unittest.TestCase):
         parser = BaiduBaikeParser()
         parser.load_content(content['html'])
         # followings are proven:
+        print("hrefs------------------------")
+        pprint.pprint(parser.get_main_hyperlink())
         print("title------------------------")
         pprint.pprint(parser.get_item_title())
         print("summary----------------------")

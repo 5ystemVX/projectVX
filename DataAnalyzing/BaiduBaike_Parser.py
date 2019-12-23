@@ -64,6 +64,21 @@ class BaiduBaikeParser(object):
             for tag in href_list:
                 tag.unwrap()
 
+    def get_main_hyperlink(self):
+        """
+        获取正文里所有指向其他词条的超链接
+        :return: 2元素元祖列表
+        """
+        result = []
+        main_tag = self.soup.find('div', class_="main-content")
+        href_list = main_tag.find_all('a', href=regex.compile(r"^(/item/)|(/view/).*"))
+        if href_list is not None:
+            for href in href_list:
+                result.append((href.get_text(), href['href']))
+        else:
+            return None
+        return result
+
     def get_item_title(self) -> str:
         """
          获取词条标题和副标题的拼接（如果有)
