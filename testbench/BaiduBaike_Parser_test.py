@@ -41,6 +41,8 @@ class MyTestCase(unittest.TestCase):
         pprint.pprint(parser.get_item_basic_info())
         print("reference--------------------")
         pprint.pprint(parser.get_item_reference())
+        print("main-------------------")
+        pprint.pprint(parser.get_main_content())
         self.assertEqual(True, True)
 
     def test_relation_table_parsing(self):

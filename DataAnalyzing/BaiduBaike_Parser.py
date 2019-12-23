@@ -1,5 +1,7 @@
+import copy
 import json
 import pprint
+import time
 import urllib.request
 
 import bs4
@@ -79,7 +81,7 @@ class BaiduBaikeParser(object):
     def get_item_summary(self) -> str or None:
         """
         获取词条的概述区块纯文本
-        :return:
+        :return str:
         """
         # 切割主页概述区块
         summary_part = self.soup.find(attrs={"class": "lemma-summary"})
@@ -102,6 +104,7 @@ class BaiduBaikeParser(object):
         info_part = self.soup.find('div', class_='basic-info')
         if info_part is None:
             return None
+        info_part = copy.copy(info_part)  # 不改动原始数据
         self.remove_ref(info_part)  # 切除参考文献角标
         self.remove_hyperlink(info_part)  # 移除超链标记
         # 分列操作
@@ -213,6 +216,81 @@ class BaiduBaikeParser(object):
                 result_list.append(''.join(tag.stripped_strings))
         return result_list
 
+    def get_main_content(self):
+        """
+        获取百度百科页面正文的文本内容，保持目录结构(暂不处理内嵌table等格式）
+        :return: 嵌套的list,每个list[0]元素为该段落标题
+        """
+        # 正文部分：
+        main_copy = copy.copy(self.soup.find('div', class_="main-content"))
+        # 切除图片说明
+        temp = main_copy.find_all('span', class_="description")
+        title = None
+        if temp is not None:
+            for description in temp:
+                description.decompose()
+        # 切除标题前缀词
+        temp = main_copy.find_all('span', class_="title-prefix")
+        if temp is not None:
+            title = temp[0].text
+            for item in temp:
+                item.decompose()
+        # 内容游标
+        content_cursor = main_copy.find('div', class_="configModuleBanner")
+
+        # 标题栈，预先压入一层壳子
+        title_stack = [[title]]
+        # 内容缓存
+        content_buffer = ''
+
+        while content_cursor is not None:
+            # 顺序遍历
+            content_cursor = content_cursor.next_sibling
+            # 筛掉字符串
+            if not isinstance(content_cursor, bs4.Tag):
+                continue
+            # 表格没有统一class特征，得提前识别
+            if content_cursor.name == "table":
+                content_buffer += "".join(content_cursor.stripped_strings) + "  "
+            if content_cursor.get('class') is None:
+                continue
+            # 筛掉超链跳转标记
+            if 'anchor-list' in content_cursor['class']:
+                continue
+            # 文本段
+            if 'para' in content_cursor['class'] or 'para-list' in content_cursor['class']:
+                content_buffer += "".join(content_cursor.stripped_strings) + "  "
+            # 标题段
+            elif 'para-title' in content_cursor['class']:
+                # 文本内容打包进当前最小标题
+                if content_buffer != '':
+                    title_stack[len(title_stack) - 1].append(content_buffer.strip())
+                    content_buffer = ''
+
+                if "level-2" in content_cursor['class']:
+                    if len(title_stack) > 1:
+                        while len(title_stack) > 1:
+                            content = title_stack.pop()
+                            title_stack[len(title_stack) - 1].append(content)
+                    title = content_cursor.find('h2').text
+                    title_stack.append([title])
+                elif "level-3" in content_cursor['class']:
+                    if len(title_stack) > 2:
+                        while len(title_stack) > 2:
+                            content = title_stack.pop()
+                            title_stack[len(title_stack) - 1].append(content)
+                    title = content_cursor.find('h3').text
+                    title_stack.append([title])
+        # 收尾，输出栈内剩余内容
+        if content_buffer != '':
+            title_stack[len(title_stack) - 1].append(content_buffer.strip())
+        while len(title_stack) > 1:
+            while len(title_stack) > 1:
+                content = title_stack.pop()
+                title_stack[len(title_stack) - 1].append(content)
+
+        pprint.pprint(title_stack[0])
+
     def get_item_relation_table(self, soup=None):
         """
         获取百科词条页面下方相关内容表格（ajax异步内容，需要请求服务器）
@@ -244,10 +322,10 @@ class BaiduBaikeParser(object):
         args = [0, 8, {"fentryTableId": rt_id}, False]  # 在这里传入条目表的id
 
         # 将参数内容转为url转义编码插入
-        requset_url = (root_url + get_appendix.format(action=quote(action_str), args=quote(str(args))))
+        request_url = (root_url + get_appendix.format(action=quote(action_str), args=quote(str(args))))
         try:
             # 获取表格json
-            req = urllib.request.Request(requset_url, headers=self.headers)
+            req = urllib.request.Request(request_url, headers=self.headers)
             response = urllib.request.urlopen(req, timeout=5)
             if self.__check_404_error(response.url):
                 return None
@@ -265,6 +343,7 @@ class BaiduBaikeParser(object):
         # 加入表名
         result_single_table['#head_name#'] = main_title
         result_single_table['#head_link#'] = None
+        result_single_table['#table_id#'] = rt_id
         # 解析Html
         relation_soup = bs4.BeautifulSoup(html_text, features='html.parser')
         r_unit_list = relation_soup.find_all(class_='relation-unit', recursive=False)
