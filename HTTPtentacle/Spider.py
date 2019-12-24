@@ -8,6 +8,7 @@ import HTTPtentacle.Mysql_connector
 
 class SpiderSlave(object):
     def __init__(self, step_length=100, log_dir=None):
+        self.timestamp = time.time()  # 时间戳，计时统计用
         self.crawled_page_count = 0  # 爬取计数
         self.error_404_count = 0  # 遇到不存在的网页计数
         self.buffer_list = []  # 爬到的内容缓存
@@ -69,18 +70,22 @@ class SpiderSlave(object):
         :return:
         """
         if force:
+            time_span = time.time() - self.timestamp
             log_content = ('\n',
                            'LOG---START---------------------------------------------------\n',
                            time.ctime(time.time()),
                            '\npid:{}\n'.format(os.getpid()),
                            self.log_buffer,
-                           "\nprocess total:{} 404 total:{}\n".format(self.crawled_page_count, self.error_404_count),
+                           "\nprocess total:{},404 total:{},time cost:{} secs\n".format(self.crawled_page_count,
+                                                                                        self.error_404_count,
+                                                                                        time_span),
                            'connError list:\n{}'.format('\n'.join(self.connect_error_list)),
                            '\nLOG----END----------------------------------------------------')
             self.connect_error_list.clear()
             with open(self.logfile_dir, 'a', encoding='utf-8') as logfile:
                 logfile.writelines(log_content)
             self.log_buffer = ""
+            self.timestamp = time.time()
 
     @staticmethod
     def __check_404_error(url):
