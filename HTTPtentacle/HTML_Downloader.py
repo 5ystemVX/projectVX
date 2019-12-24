@@ -77,12 +77,12 @@ class HTMLDownloader(object):
                 # 记录失败，重试连接
                 fail_count += 1
                 # debug output
-                print("connection fail %s" % fail_count)
+                print("%s connection fail %s" % url, fail_count)
                 continue
             else:
                 # 获取成功操作
                 # 组织页面的全部信息
                 result = response.content.decode("utf-8")
                 return result, response.url
-                # 连接失败，抛异常
+        # 连接失败，抛异常
         raise UserWarning("connection failed {} times.".format(retry_time))
