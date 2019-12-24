@@ -79,7 +79,7 @@ class BaiduBaikeParser(object):
             return None
         return result
 
-    def get_item_title(self) -> str:
+    def get_title(self) -> str:
         """
          获取词条标题和副标题的拼接（如果有)
         :return: str
@@ -93,7 +93,7 @@ class BaiduBaikeParser(object):
             title += title_part.find(name='h2').string
         return title
 
-    def get_item_summary(self) -> str or None:
+    def get_summary(self) -> str or None:
         """
         获取词条的概述区块纯文本
         :return str:
@@ -110,17 +110,16 @@ class BaiduBaikeParser(object):
                 summary += str(child).strip()
         return summary
 
-    def get_item_basic_info(self) -> dict or None:
+    def get_basic_info(self) -> dict or None:
         """
         以字典的形式获取词条的定义属性
         :return: dict
         """
         # 切出属性栏区块
-        info_part = self.soup.find('div', class_='basic-info')
+        info_part = copy.copy(self.soup.find('div', class_='basic-info'))
         if info_part is None:
             return None
         info_part = copy.copy(info_part)  # 不改动原始数据
-        self.remove_ref(info_part)  # 切除参考文献角标
         self.remove_hyperlink(info_part)  # 移除超链标记
         # 分列操作
         columns = [info_part.find('dl', class_="basicInfo-left"), info_part.find('dl', class_="basicInfo-right")]
@@ -143,7 +142,7 @@ class BaiduBaikeParser(object):
         keymap.pop('')  # 剔除初始化项
         return keymap
 
-    def get_item_reference(self) -> list or None:
+    def get_reference(self) -> list or None:
         """
         获取词条参考资料区块
         :return: list[tuple(参考资料文字内容,链接),None 如果没有参考资料区域
@@ -166,8 +165,7 @@ class BaiduBaikeParser(object):
 
     def get_share_like_count(self) -> dict or None:
         """
-        获取转发、点赞数（ajax异步内容，需要请求2次服务器）
-
+        获取转发、点赞数（ajax异步内容，需要请求服务器）
         返回  dict ｛share,like,review} 格式值
              None 如果404
         :raises Exception 连接失败
@@ -219,7 +217,11 @@ class BaiduBaikeParser(object):
         review_count = json_data['pv'] if json_data.get('pv') is not None else 0
         return review_count
 
-    def get_item_tag(self):
+    def get_tags(self):
+        """
+        获取词条的开放标签
+        :return list：标签列表
+        """
         # 词条标签：不一定每个词条都有，需要筛选有的再查
         tag_node = self.soup.find('div', id="open-tag")
         if tag_node is None:
@@ -238,13 +240,15 @@ class BaiduBaikeParser(object):
         """
         # 正文部分：
         main_copy = copy.copy(self.soup.find('div', class_="main-content"))
+
         # 切除图片说明
         temp = main_copy.find_all('span', class_="description")
-        title = None
         if temp is not None:
             for description in temp:
                 description.decompose()
-        # 切除标题前缀词
+
+        # 切除各级标题的公共前缀
+        title = None
         temp = main_copy.find_all('span', class_="title-prefix")
         if temp is not None:
             title = temp[0].text
@@ -306,7 +310,7 @@ class BaiduBaikeParser(object):
 
         pprint.pprint(title_stack[0])
 
-    def get_item_relation_table(self, soup=None):
+    def get_relation_table(self, soup=None):
         """
         获取百科词条页面下方相关内容表格（ajax异步内容，需要请求服务器）
         :param soup: 词条页面解析的BeautifulSoup对象
