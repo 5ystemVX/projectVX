@@ -9,8 +9,10 @@ import HTTPtentacle.Mysql_connector
 class SpiderSlave(object):
     def __init__(self, step_length=100, log_dir=None):
         self.timestamp = time.time()  # 时间戳，计时统计用
-        self.crawled_page_count = 0  # 爬取计数
+        self.crawled_page_count = 0  # 总爬取计数
+        self.partial_crawl_count = 0  # 部分爬取计数
         self.error_404_count = 0  # 遇到不存在的网页计数
+        self.partial_404_count = 0
         self.buffer_list = []  # 爬到的内容缓存
         self.connect_error_list = []  # 连接失败url记录缓存
         self.dbconn = HTTPtentacle.Mysql_connector.MysqlConnector()  # sql接口
@@ -35,10 +37,10 @@ class SpiderSlave(object):
             self.log_buffer += full_url + ": connect error\n"
             return False
 
-        self.crawled_page_count += 1
+        self.partial_crawl_count += 1
         if self.__check_404_error(content["response_url"]):
             self.log_buffer += full_url + ": 404 page\n"
-            self.error_404_count += 1
+            self.partial_404_count += 1
             return False
         else:
             item = (full_url, content["response_url"], int(content["LemmaId"]), content["newLemmaIdEnc"],
@@ -57,7 +59,7 @@ class SpiderSlave(object):
             print("pid:{}------------- writing mysql and log".format(os.getpid()))
             columns = ['old_url', 'url', 'lemmaid', 'newlemmaidenc', 'html_data']
             self.dbconn.insert_unique('item_raw', columns, self.buffer_list)
-            self.buffer_list = []
+            self.buffer_list.clear()
             self.write_log(True)
             return True
         else:
@@ -70,18 +72,24 @@ class SpiderSlave(object):
         :return:
         """
         if force:
+            self.error_404_count += self.partial_404_count
+            self.crawled_page_count += self.partial_crawl_count
             time_span = time.time() - self.timestamp
             log_content = ('\n',
                            'LOG---START---------------------------------------------------\n',
                            time.ctime(time.time()),
                            '\npid:{}\n'.format(os.getpid()),
                            self.log_buffer,
-                           "\nprocess total:{},404 total:{},time cost:{} secs\n".format(self.crawled_page_count,
-                                                                                        self.error_404_count,
-                                                                                        time_span),
+                           "\nprocess section:{}, 404 section:{},\n"
+                           .format(self.partial_crawl_count, self.partial_404_count),
+                           "\nprocess total:{}, 404 total:{}, time cost:{} secs\n"
+                           .format(self.crawled_page_count, self.error_404_count, time_span),
                            'connError list:\n{}'.format('\n'.join(self.connect_error_list)),
                            '\nLOG----END----------------------------------------------------')
             self.connect_error_list.clear()
+
+            self.partial_crawl_count = 0
+            self.partial_404_count = 0
             with open(self.logfile_dir, 'a', encoding='utf-8') as logfile:
                 logfile.writelines(log_content)
             self.log_buffer = ""

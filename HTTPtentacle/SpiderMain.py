@@ -84,6 +84,7 @@ if __name__ == '__main__':
         time.sleep(60)  # 每分钟检查一次是否完成
         # 管理进程生命周期
         print('-main-checking-({})'.format(count))  # 计数
+        count += 1
         for crawler in crawler_reg_list:  # 检查全部线程是否存活
             if not crawler.is_alive():  # 替换死进程
                 print("replace {}".format(crawler.name))
