@@ -6,16 +6,19 @@ import HTTPtentacle.Spider
 import multiprocessing
 
 
-def spider_run(mp_queue: multiprocessing.Queue, stop_sign: multiprocessing.Value):
+def spider_run(mp_queue: multiprocessing.Queue, stop_sign: multiprocessing.Value, log_dir: str = None):
     """
     爬虫子线程的执行方法
     :param mp_queue: url池队列，爬虫消耗其中的url
     :param stop_sign: 停止记号，由主函数控制。置为True的时候爬虫准备收尾停止运行。
+    :param log_dir: 日志文件名
     :return None: 无返回值，直接与数据库交互。
     """
     sleep_time = 0.7
     print('pid: {}---starting'.format(os.getpid()))
-    spider = HTTPtentacle.Spider.SpiderSlave(step_length=100, log_dir="../debug_scripts/debug_html/spiders_log.log")
+    if log_dir is None:
+        log_dir = "../logs/spiders_log_default.log"
+    spider = HTTPtentacle.Spider.SpiderSlave(step_length=100, log_dir=log_dir)
     try:
         spider.connect_sql("localhost", "root", "password", 'baidu_test')
     except:
@@ -63,18 +66,20 @@ def dummy_run(mp_queue: multiprocessing.Queue, stop_sign: multiprocessing.Value)
 
 if __name__ == '__main__':
     # multiprocessing自带的线程池Pool不是特别适合这种单个线程需要长时间存活的任务，故采用Process类封装爬虫，自行管理线程数量
-    warnings.filterwarnings("ignore")
+    warnings.filterwarnings("ignore")  # 忽略插入数据库时重复项的警告
+    # 任务队列和停止记号初始化
     url_queue = multiprocessing.Queue()
     end_signal = multiprocessing.Value('i', 0)
-    for i in range(1, 1000):
+    for i in range(1, 5000):
         url_queue.put("https://baike.baidu.com/view/{}".format(i))
+    logs_dir = "../logs/spider_log----{}.log".format(time.ctime())
     CRAWLER_NUM = 7  # ########重要参数，进程数量######## #
 
     # 爬虫主线程逻辑
     # 启动所有进程
     crawler_reg_list = []
     while len(crawler_reg_list) < CRAWLER_NUM:
-        process = multiprocessing.Process(target=spider_run, args=(url_queue, end_signal))
+        process = multiprocessing.Process(target=spider_run, args=(url_queue, end_signal, log_dir))
         crawler_reg_list.append(process)
         process.daemon = True
         process.start()

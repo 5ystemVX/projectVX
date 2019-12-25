@@ -33,8 +33,14 @@ class SpiderSlave(object):
         try:
             content = HTTPtentacle.HTML_Downloader.HTMLDownloader.get_page_content(full_url)
         except UserWarning as e:
+            print(e)
             self.connect_error_list.append(full_url)
             self.log_buffer += full_url + ": connect error\n"
+            return False
+        except UnicodeDecodeError as e:
+            print(e)
+            self.connect_error_list.append(full_url)
+            self.log_buffer += full_url + ": decode error\n"
             return False
 
         self.partial_crawl_count += 1
@@ -84,7 +90,7 @@ class SpiderSlave(object):
                            .format(self.partial_crawl_count, self.partial_404_count),
                            "\nprocess total:{}, 404 total:{}, time cost:{} secs\n"
                            .format(self.crawled_page_count, self.error_404_count, time_span),
-                           'connError list:\n{}'.format('\n'.join(self.connect_error_list)),
+                           'Error list:\n{}'.format('\n'.join(self.connect_error_list)),
                            '\nLOG----END----------------------------------------------------')
             self.connect_error_list.clear()
 
