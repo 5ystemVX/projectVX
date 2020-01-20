@@ -44,8 +44,7 @@ def spider_run(mp_queue: multiprocessing.Queue, stop_sign: multiprocessing.Value
         print(e)
         print('pid:{}-ERROR---unhandled exception---- exiting'.format(os.getpid()))
     # 通知结束，spider收尾
-    spider.write_log(True)
-    spider.write_log(force=True)
+    spider.write_into_sql(True)
     exit(0)
 
 
@@ -75,10 +74,10 @@ if __name__ == '__main__':
     # 任务队列和停止记号初始化
     url_queue = multiprocessing.Queue()
     end_signal = multiprocessing.Value('i', 0)
-    for i in range(1, 5000):
+    for i in range(1, 600000):
         url_queue.put("https://baike.baidu.com/view/{}".format(i))
-    logs_dir = "../logs/spider_log----{}.log".format(time.time())
-    CRAWLER_NUM = 7  # ########重要参数，进程数量######## #
+    logs_dir = "../logs/spider_log----{}.log".format(int(time.time()))
+    CRAWLER_NUM = 12  # ########重要参数，进程数量######## #
 
     # 爬虫主进程逻辑
     # 启动所有进程

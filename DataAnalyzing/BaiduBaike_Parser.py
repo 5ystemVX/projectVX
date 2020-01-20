@@ -10,7 +10,6 @@ import requests
 from urllib.parse import quote
 
 
-# noinspection PyMethodMayBeStatic
 class BaiduBaikeParser(object):
 
     def __init__(self):

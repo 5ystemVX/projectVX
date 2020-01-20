@@ -31,8 +31,8 @@ class MysqlConnector:
             if self._debug:
                 print('connection successful to ' + url + ' as ' + username)
             return True
-        except:
-            return False
+        except Exception as e:
+            raise e
 
     def execute_raw_sql(self, sql_statement: str):
         if self._debug:
@@ -79,9 +79,11 @@ class MysqlConnector:
             cursor.execute(sqlstmt, arglist)
             # 提交到数据库执行
             self._dbconn.commit()
+            return True
         except:
             # 如果发生错误则回滚
             self._dbconn.rollback()
+            return False
 
     def insert_unique(self, table: str, columns: list, values_list: list, overwrite=False):
         if overwrite:
@@ -129,6 +131,7 @@ class MysqlConnector:
         except:
             # 如果发生错误则回滚
             self._dbconn.rollback()
+            return False
 
     # def insert_one(self, table: str, values: list, columns: list = None, strict_mode: bool = False):
     #     sqlstmt = "INSERT INTO " + str.lower(table)
