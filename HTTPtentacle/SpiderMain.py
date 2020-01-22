@@ -6,6 +6,7 @@ import HTTPtentacle.Spider
 import multiprocessing
 
 
+# noinspection PyBroadException
 def spider_run(mp_queue: multiprocessing.Queue, stop_sign: multiprocessing.Value, log_dir: str = None):
     """
     爬虫子进程的执行方法
@@ -14,17 +15,19 @@ def spider_run(mp_queue: multiprocessing.Queue, stop_sign: multiprocessing.Value
     :param log_dir: 日志文件名
     :return None: 无返回值，直接与数据库交互。
     """
-    warnings.filterwarnings("ignore")  # 忽略插入数据库时重复项的警告
-    sleep_time = 0.5
-    print('pid: {}---starting'.format(os.getpid()))
-    if log_dir is None:
-        log_dir = "../logs/spiders_log_default.log"
-    spider = HTTPtentacle.Spider.SpiderSlave(step_length=100, log_dir=log_dir)
     try:
+        warnings.filterwarnings("ignore")  # 忽略插入数据库时重复项的警告
+        sleep_time = 0.5
+        print('pid: {}---starting'.format(os.getpid()))
+        if log_dir is None:
+            log_dir = "../logs/spiders_log_default.log"
+        spider = HTTPtentacle.Spider.SpiderSlave(step_length=100, log_dir=log_dir)
+
         spider.connect_sql("localhost", "root", "password", 'baidu_test')
-    except:
+    except Exception as e:
+        print(e)
         ('pid: {}---mysql connect error'.format(os.getpid()))
-        exit(0)
+        exit(-1)
     try:
         while True:  # 进程主循环
             if stop_sign.value == 1:
@@ -41,7 +44,8 @@ def spider_run(mp_queue: multiprocessing.Queue, stop_sign: multiprocessing.Value
                 time.sleep(sleep_time)  # 添加延迟，防反爬
     except Exception as e:
         # 接受爬取过程中所有未处理异常，保证正常退出
-        print(e)
+        print(e.with_traceback())
+        spider.log_append("ERROR----{}----unhandled exception".format(http_url))
         print('pid:{}-ERROR---unhandled exception---- exiting'.format(os.getpid()))
     # 通知结束，spider收尾
     spider.write_into_sql(True)
@@ -74,7 +78,7 @@ if __name__ == '__main__':
     # 任务队列和停止记号初始化
     url_queue = multiprocessing.Queue()
     end_signal = multiprocessing.Value('i', 0)
-    for i in range(1, 600000):
+    for i in range(600000, 800000):
         url_queue.put("https://baike.baidu.com/view/{}".format(i))
     logs_dir = "../logs/spider_log----{}.log".format(int(time.time()))
     CRAWLER_NUM = 12  # ########重要参数，进程数量######## #
@@ -98,7 +102,7 @@ if __name__ == '__main__':
             if not crawler.is_alive():  # 替换死进程
                 print("replace {}".format(crawler.name))
                 crawler_reg_list.remove(crawler)
-                process = multiprocessing.Process(target=spider_run, args=(url_queue, end_signal))
+                process = multiprocessing.Process(target=spider_run, args=(url_queue, end_signal, logs_dir))
                 process.daemon = True
                 process.start()
                 crawler_reg_list.append(process)

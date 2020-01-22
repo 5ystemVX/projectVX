@@ -101,6 +101,9 @@ class SpiderSlave(object):
             self.log_buffer = ""
             self.timestamp = time.time()
 
+    def log_append(self, string):
+        self.log_buffer += string
+
     @staticmethod
     def __check_404_error(url):
         if re.match("https://baike.baidu.com/error", url) is None:
